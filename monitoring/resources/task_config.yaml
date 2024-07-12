@@ -1,0 +1,7 @@
+tasks:
+  - task: tasks.task2.task2
+    callback: tasks.task2.callback_task2
+    interval: 2
+  - task: tasks.task3.task3
+    interval: 4
+

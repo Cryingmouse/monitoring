@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "simple": {
+      "format": "[%(asctime)s] [%(parentThread)s-%(thread)s] %(pathname)s [line:%(lineno)d] %(levelname)s: %(message)s"
+    },
+    "json": {
+      "()": "monitoring.logger.JSONFormatter",
+      "fmt_keys": {
+        "level": "levelname",
+        "message": "message",
+        "timestamp": "timestamp",
+        "logger": "name",
+        "module": "module",
+        "function": "funcName",
+        "line": "lineno",
+        "parent_thread": "parentThread",
+        "thread": "thread",
+        "thread_name": "threadName"
+      }
+    }
+  },
+  "filters": {
+    "parent_thread": {
+      "()": "monitoring.logger.ParentThreadFilter"
+    }
+  },
+  "handlers": {
+    "file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "DEBUG",
+      "formatter": "simple",
+      "filters": [
+        "parent_thread"
+      ],
+      "filename": "monitoring.log",
+      "maxBytes": 1048576000,
+      "backupCount": 5
+    },
+     "console": {
+      "class": "logging.StreamHandler",
+      "level": "DEBUG",
+      "formatter": "simple",
+      "filters": [
+        "parent_thread"
+      ],
+      "stream": "ext://sys.stdout"
+    }
+  },
+  "root": {
+    "level": "DEBUG",
+    "handlers": [
+      "console"
+    ]
+  }
+}
