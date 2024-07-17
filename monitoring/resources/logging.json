@@ -52,17 +52,19 @@
       "filters": [
         "parent_thread"
       ],
+      "filepath": "/var/log/scheduler",
       "filename": "scheduler.log",
       "maxBytes": 1048576000,
       "backupCount": 5
     },
-    "clean_core_dump_handler": {
+    "clean_core_dump_file_handler": {
       "class": "logging.handlers.RotatingFileHandler",
       "level": "DEBUG",
       "formatter": "simple",
       "filters": [
         "parent_thread"
       ],
+      "filepath": "/var/log/systemd/coredump/",
       "filename": "clean_core_dump.log",
       "maxBytes": 1048576000,
       "backupCount": 5
@@ -89,7 +91,7 @@
       "level": "INFO",
       "handlers": [
         "console_handler",
-        "clean_core_dump_handler"
+        "clean_core_dump_file_handler"
       ]
     }
   }

@@ -86,19 +86,25 @@ def setup_logging():
         config_json = json.load(f_in)
 
     platform = sys.platform
-    log_dir = os.path.join(os.environ["TEMP"], "log") if platform in ["win32", "darwin"] else "/var/log/scheduler"
 
     if "file_handler" in config_json["handlers"]:
+        if platform in ["win32", "darwin"]:
+            log_dir = os.path.join(os.environ["TEMP"], "log")
+        else:
+            log_dir = config_json["handlers"]["file_handler"].get("filepath", "/var/log/scheduler")
+
         config_json["handlers"]["file_handler"]["filename"] = os.path.join(
             log_dir, config_json["handlers"]["file_handler"]["filename"]
         )
 
-    log_dir = (
-        os.path.join(os.environ["TEMP"], "log") if platform in ["win32", "darwin"] else "/var/log/systemd/coredump/"
-    )
-    if "clean_core_dump_handler" in config_json["handlers"]:
-        config_json["handlers"]["clean_core_dump_handler"]["filename"] = os.path.join(
-            log_dir, config_json["handlers"]["clean_core_dump_handler"]["filename"]
+    if "clean_core_dump_file_handler" in config_json["handlers"]:
+        if platform in ["win32", "darwin"]:
+            log_dir = os.path.join(os.environ["TEMP"], "log")
+        else:
+            log_dir = config_json["handlers"]["file_handler"].get("filepath", "/var/log/systemd/coredump/")
+
+        config_json["handlers"]["clean_core_dump_file_handler"]["filename"] = os.path.join(
+            log_dir, config_json["handlers"]["clean_core_dump_file_handler"]["filename"]
         )
 
     config.dictConfig(config_json)
