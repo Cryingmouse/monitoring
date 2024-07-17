@@ -1,7 +1,20 @@
 tasks:
   - task: tasks.task1.Task1
+    executor: ProcessPoolExecutor
+    task_store: mariadb
     trigger_type: interval
-    executor: ThreadPoolExecutor
     interval: 2
     subscribers:
       - tasks.task1.Subscriber1
+      - tasks.task1.Subscriber2
+  - task: tasks.task2.Task2
+    executor: ThreadPoolExecutor
+    task_store: default
+    trigger_type: cron
+    cron:
+      expression: "*/5 * * * * *"
+      timezone: "Asia/Shanghai"
+      jitter: 1
+    subscribers:
+      - tasks.task2.Subscriber1
+      - tasks.task2.Subscriber2

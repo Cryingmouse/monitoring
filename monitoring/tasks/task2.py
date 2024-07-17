@@ -7,16 +7,14 @@ from monitoring.tasks.base import AbstractTask, AbstractSubscriber
 LOG = logging.getLogger()
 
 
-class Task1(AbstractTask):
+class Task2(AbstractTask):
     @classmethod
     def execute(cls):
-        LOG.critical(f"Executing Job1, {datetime.now()}")
+        LOG.critical(f"Executing Task2, {datetime.now()}")
 
-        # time.sleep(10)  # 模拟长时间运行的任务
+        LOG.critical(f"Executing Task2, {datetime.now()} after sleep")
 
-        LOG.critical(f"Executing Job1, {datetime.now()} after sleep")
-
-        return "Job1 1 result"
+        return "Task2 result"
 
 
 class Subscriber1(AbstractSubscriber):

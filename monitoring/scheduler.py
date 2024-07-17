@@ -17,7 +17,7 @@ from pytz import timezone, utc
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from monitoring.job_manager import JobManager
+from monitoring.task_manager import TaskManager
 
 LOG = logging.getLogger()
 
@@ -45,6 +45,8 @@ class Scheduler:
             jobstores=job_stores, executors=executors, job_defaults=job_defaults, timezone=utc
         )
         self.scheduler.add_listener(self._job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED)
+
+        self.task_manager = TaskManager()
 
         self.task_config_file = self.find_config(config_file)
         self.config = None
@@ -82,71 +84,108 @@ class Scheduler:
 
     def apply_task_config(self):
         """应用配置，添加新任务，删除不再需要的任务"""
-        current_jobs = {job.id: job for job in self.scheduler.get_jobs()}
-        new_job_ids = set()
+        current_tasks = {job.id: job for job in self.scheduler.get_jobs()}
+        new_task_names = set()
 
         for task_config in self.config["tasks"]:
-            module_name, job_name = task_config["task"].rsplit(".", 1)
+            module_name, task_name = task_config["task"].rsplit(".", 1)
             module = importlib.import_module(module_name)
-            job = getattr(module, job_name)
-            job_id = f"{module_name}.{job_name}"
+            task = getattr(module, task_name)
+            task_name = f"{module_name}.{task_name}"
 
             trigger = self._create_trigger(task_config)
             executor = self._get_executor(task_config)
             subscribes = self._get_subscribes(task_config)
+            store = self._get_store(task_config)
 
-            if job_id in current_jobs:
+            if task_name in current_tasks:
                 # 更新现有任务
-                self.scheduler.reschedule_job(job_id, trigger=trigger)
+                self.scheduler.reschedule_job(task_name, trigger=trigger)
             else:
                 # 添加新任务
-                self.register(job=job, trigger=trigger, executor=executor, subscribes=subscribes)
+                self.register(task=task, trigger=trigger, executor=executor, store=store, subscribes=subscribes)
 
-            new_job_ids.add(job_id)
+            new_task_names.add(task_name)
 
         # 删除不再需要的任务
-        for job_id in set(current_jobs.keys()) - new_job_ids:
-            self.unregister(job_id)
+        for task_name in set(current_tasks.keys()) - new_task_names:
+            self.unregister(task_name)
 
     def reload_config(self):
         """重新加载配置文件并应用更改"""
         self.load_task_config()
 
-    def register(self, job, trigger, executor, subscribes):
-        """注册一个新任务及其执行间隔"""
-        job_name = f"{job.__module__}.{job.__name__}"
-        job = self.scheduler.add_job(
-            func=JobManager.execute_and_publish,
+    def register(self, task, trigger, executor, store, subscribes):
+        task_name = f"{task.__module__}.{task.__name__}"
+
+        self.scheduler.add_job(
+            func=self.task_manager.execute_and_publish,
             trigger=trigger,
             executor=executor,
-            args=[job],
-            id=job_name,
-            jobstore="mariadb",
+            args=[task],
+            id=task_name,
+            jobstore=store,
             replace_existing=True,
             max_instances=1,
             coalesce=True,
         )
 
-        JobManager.subscribe(job_name, subscribes)
-        return job_name
+        self.task_manager.subscribe(task_name, subscribes)
 
-    def unregister(self, job_id):
-        """取消注册一个任务"""
-        self.scheduler.remove_job(job_id)
+        return task_name
+
+    def unregister(self, task_name):
+        """Unregister a task from scheduler."""
+        self.scheduler.remove_job(task_name)
 
     def start(self):
-        """启动定时任务框架"""
+        """Start scheduler"""
         self.scheduler.start()
 
     def stop(self):
-        """停止定时任务框架"""
+        """Stop scheduler"""
         self.scheduler.shutdown()
         self.observer.stop()
         self.observer.join()
 
     @staticmethod
     def _create_trigger(task_config):
-        """根据配置创建相应的触发器"""
+        """
+        Create a trigger based on the provided task configuration.
+
+        This function creates and returns an appropriate trigger object based on the
+        trigger type specified in the task configuration. It supports three types of
+        triggers: interval, cron, and date.
+
+        Args:
+            task_config (dict): A dictionary containing the task configuration.
+                It must include a 'trigger_type' key and additional keys based on the trigger type:
+                - For 'interval': 'interval' (in seconds)
+                - For 'cron': 'cron' dict with 'expression' and optional 'start_date', 'end_date', 'timezone', 'jitter'
+                - For 'date': 'run_date' (ISO format datetime string)
+
+        Returns:
+            apscheduler.triggers.base.BaseTrigger: An instance of the appropriate trigger class.
+
+        Raises:
+            ValueError: If an unsupported trigger type is specified or if the cron expression is invalid.
+
+        Examples:
+            >>> config = {"trigger_type": "interval", "interval": 60}
+            >>> trigger = _create_trigger(config)
+            >>> type(trigger)
+            <class 'apscheduler.triggers.interval.IntervalTrigger'>
+
+            >>> config = {"trigger_type": "cron", "cron": {"expression": "0 0 * * *"}}
+            >>> trigger = _create_trigger(config)
+            >>> type(trigger)
+            <class 'apscheduler.triggers.cron.CronTrigger'>
+
+            >>> config = {"trigger_type": "date", "run_date": "2023-01-01T00:00:00"}
+            >>> trigger = _create_trigger(config)
+            >>> type(trigger)
+            <class 'apscheduler.triggers.date.DateTrigger'>
+        """
         trigger_type = task_config["trigger_type"].lower()
 
         if trigger_type == "interval":
@@ -188,7 +227,6 @@ class Scheduler:
                     elif field == "timezone":
                         cron_kwargs[field] = timezone(cron_config[field])
                     else:
-                        print(field)
                         cron_kwargs[field] = cron_config[field]
 
             return CronTrigger(**cron_kwargs)
@@ -199,7 +237,39 @@ class Scheduler:
 
     @staticmethod
     def _get_executor(task_config):
-        """获取执行器"""
+        """Get the executor type for a task.
+
+        Determines and returns the appropriate executor identifier based on the
+        executor name specified in the task configuration. Supports process pool
+        executor, thread pool executor, and default executor.
+
+        Args:
+            task_config (dict): Task configuration dictionary. Should contain an
+                                optional 'executor' key to specify the executor type.
+
+        Returns:
+            str: Executor identifier. Possible return values:
+                 - 'process_pool': Corresponds to ProcessPoolExecutor
+                 - 'thread_pool': Corresponds to ThreadPoolExecutor
+                 - 'default': For default executor or when no executor is specified
+
+        Examples:
+            >>> config = {'executor': 'ProcessPoolExecutor'}
+            >>> _get_executor(config)
+            'process_pool'
+
+            >>> config = {'executor': 'ThreadPoolExecutor'}
+            >>> _get_executor(config)
+            'thread_pool'
+
+            >>> config = {}
+            >>> _get_executor(config)
+            'default'
+
+        Note:
+            If the 'executor' key is not specified in task_config, or if an unknown executor name is provided, the
+            function will return 'default'.
+        """
         executor_name = task_config.get("executor", "default")
         if executor_name == "ProcessPoolExecutor":
             return "process_pool"
@@ -209,8 +279,45 @@ class Scheduler:
             return "default"
 
     @staticmethod
+    def _get_store(task_config):
+        task_store = task_config.get("task_store", "default")
+
+        return task_store if task_store in ("default", "mariadb") else "default"
+
+    @staticmethod
     def _get_subscribes(task_config):
-        """获取回调任务（如果存在）"""
+        """Retrieve and return a list of subscriber callback functions for a task.
+
+        This function parses the 'subscribers' field in the task configuration,
+        imports the specified modules, and retrieves the callback functions.
+
+        Args:
+            task_config (dict): A dictionary containing the task configuration.
+                                It should have a 'subscribers' key with a list
+                                of strings in the format 'module.callback_function'.
+
+        Returns:
+            list: A list of callable objects (functions) that are subscribed to the task.
+
+        Raises:
+            ImportError: If a specified module cannot be imported.
+            AttributeError: If a specified callback function cannot be found in the module.
+
+        Example:
+            >>> config = {
+            ...     'subscribers': ['mymodule.callback1', 'anothermodule.callback2']
+            ... }
+            >>> callbacks = _get_subscribes(config)
+            >>> len(callbacks)
+            2
+            >>> all(callable(func) for func in callbacks)
+            True
+
+        Note:
+            The function uses `importlib.import_module` to dynamically import modules,
+            and `getattr` to retrieve the callback functions from these modules.
+            Ensure that all specified modules and functions exist and are importable.
+        """
         subscribes = []
 
         if "subscribers" in task_config:
@@ -223,7 +330,34 @@ class Scheduler:
 
     @staticmethod
     def _job_listener(event):
-        """监听任务执行事件"""
+        """Listen for and log job execution events.
+
+        This function serves as an event listener for scheduler job events.
+        It specifically handles missed job executions and successful job executions,
+        logging appropriate messages for each case.
+
+        Args:
+            event (apscheduler.events.JobEvent): An event object from APScheduler
+                containing information about the job event.
+
+        Returns:
+            None
+
+        Logs:
+            - ERROR: When a job misses its execution time.
+            - INFO: When a job is successfully executed.
+
+        Example:
+            This function is typically used as a callback for APScheduler events:
+
+            >>> from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
+            >>> scheduler.add_listener(_job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_MISSED)
+
+        Note:
+            This function assumes the existence of a global `LOG` object
+            for logging. Ensure that `LOG` is properly configured before
+            using this function.
+        """
         if event.code == EVENT_JOB_MISSED:
             LOG.error(f"Job {event.job_id} missed its execution time")
 
