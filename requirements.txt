@@ -1,4 +1,9 @@
-APScheduler
-PyYAML
-click
-watchdog
+APScheduler~=3.10.4
+PyYAML~=6.0.1
+click~=8.1.7
+watchdog~=4.0.1
+SQLAlchemy~=2.0.31
+PyMySQL~=1.0.2
+setuptools~=68.2.0
+pytz~=2024.1
+colorlog

@@ -1,7 +1,7 @@
 tasks:
-  - task: tasks.task2.task2
-    callback: tasks.task2.callback_task2
+  - task: tasks.task1.Task1
+    trigger_type: interval
+    executor: ThreadPoolExecutor
     interval: 2
-  - task: tasks.task3.task3
-    interval: 4
-
+    subscribers:
+      - tasks.task1.Subscriber1

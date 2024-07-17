@@ -3,7 +3,25 @@
   "disable_existing_loggers": false,
   "formatters": {
     "simple": {
-      "format": "[%(asctime)s] [%(parentThread)s-%(thread)s] %(pathname)s [line:%(lineno)d] %(levelname)s: %(message)s"
+      "format": "[%(asctime)s] [%(process)d-%(parentThread)s-%(thread)s] %(pathname)s [line:%(lineno)d] %(levelname)s: %(message)s"
+    },
+    "colored": {
+      "()": "colorlog.ColoredFormatter",
+      "format": "%(log_color)s[%(asctime)s] [%(process)d-%(parentThread)s-%(thread)s] %(pathname)s [line:%(lineno)d] %(levelname)s: %(message)s",
+      "log_colors": {
+        "DEBUG": "cyan",
+        "INFO": "green",
+        "WARNING": "yellow",
+        "ERROR": "red",
+        "CRITICAL": "red,bg_white"
+      },
+      "secondary_log_colors": {
+        "message": {
+          "ERROR": "red,bold",
+          "CRITICAL": "red,bg_white,bold"
+        }
+      },
+      "style": "%"
     },
     "json": {
       "()": "monitoring.logger.JSONFormatter",
@@ -38,10 +56,10 @@
       "maxBytes": 1048576000,
       "backupCount": 5
     },
-     "console": {
+    "console": {
       "class": "logging.StreamHandler",
       "level": "DEBUG",
-      "formatter": "simple",
+      "formatter": "colored",
       "filters": [
         "parent_thread"
       ],

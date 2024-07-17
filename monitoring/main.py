@@ -1,8 +1,7 @@
 import click
 
 from monitoring.logger import setup_logging
-from monitoring.scheduler import TimedTaskScheduler
-from monitoring.tasks.task1 import callback_task1
+from monitoring.scheduler import Scheduler
 
 setup_logging()
 
@@ -11,7 +10,9 @@ setup_logging()
 @click.option(
     "-c", "--config_file", "config_file", help="Path to the configuration file", required=True, type=str)
 def main(config_file):
-    scheduler = TimedTaskScheduler(config_file=config_file)
+    job_store_url = "mysql+pymysql://root:NAS_PASS@127.0.0.1:3306/nas"
+
+    scheduler = Scheduler(config_file=config_file, job_store_url=job_store_url)
     scheduler.start()
 
     try:

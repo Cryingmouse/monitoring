@@ -1,52 +1,70 @@
 import importlib
 import logging
 import os
-from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 import yaml
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_MISSED
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor, ProcessPoolExecutor
+from apscheduler.jobstores.memory import MemoryJobStore
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from pytz import timezone, utc
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-# 设置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from monitoring.job_manager import JobManager
+
+LOG = logging.getLogger()
 
 
 class ConfigFileHandler(FileSystemEventHandler):
-    def __init__(self, framework):
-        self.framework = framework
+    def __init__(self, scheduler):
+        self.scheduler = scheduler
 
     def on_modified(self, event):
-        if event.src_path == self.framework.config_file:
-            logger.info("Config file changed. Reloading...")
-            self.framework.reload_config()
+        if event.src_path == self.scheduler.task_config_file:
+            LOG.info("Config file changed. Reloading...")
+            self.scheduler.reload_config()
 
 
-class TimedTaskScheduler:
-    def __init__(self, config_file):
-        self.config_file = self.find_config(config_file)
-        self.scheduler = BackgroundScheduler()
-        self.subscribers = defaultdict(list)
+class Scheduler:
+    def __init__(self, config_file, job_store_url):
+        job_stores = {"default": MemoryJobStore(), "mariadb": SQLAlchemyJobStore(url=job_store_url)}
+        executors = {
+            "default": ThreadPoolExecutor(),
+            "thread_pool": ThreadPoolExecutor(max_workers=20),
+            "process_pool": ProcessPoolExecutor(max_workers=20),
+        }
+        job_defaults = {"coalesce": True, "max_instances": 1}
+        self.scheduler = BackgroundScheduler(
+            jobstores=job_stores, executors=executors, job_defaults=job_defaults, timezone=utc
+        )
         self.scheduler.add_listener(self._job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED)
-        self.load_config()
-        self.setup_config_watcher()
+
+        self.task_config_file = self.find_config(config_file)
+        self.config = None
+        self.load_task_config()
+
+        handler = ConfigFileHandler(self)
+        self.observer = Observer()
+        self.observer.schedule(handler, str(Path(self.task_config_file).parent), recursive=False)
+        self.observer.start()
 
     @staticmethod
     def find_config(config_file):
         if config_file and os.path.exists(config_file):
             return config_file
 
-        # 查找顺序：当前目录 -> 用户主目录 -> /etc/timed_task_framework
         search_paths = [
             os.path.join(os.path.dirname(__file__), "resources", "task_config.yaml"),
-            os.path.join(os.getcwd(), 'task_config.yaml'),
-            os.path.expanduser('~/.task_config.yaml'),
-            '/etc/monitoring/task_config.yaml',
+            os.path.join(os.getcwd(), "task_config.yaml"),
+            os.path.expanduser("~/.task_config.yaml"),
+            "/etc/monitoring/task_config.yaml",
         ]
 
         for path in search_paths:
@@ -55,39 +73,34 @@ class TimedTaskScheduler:
 
         raise FileNotFoundError("Config file not found. Please create a config file or specify its location.")
 
-    def setup_config_watcher(self):
-        self.observer = Observer()
-        handler = ConfigFileHandler(self)
-        self.observer.schedule(handler, Path(self.config_file).parent, recursive=False)
-        self.observer.start()
-
-    def load_config(self):
+    def load_task_config(self):
         """从配置文件加载任务"""
-        with open(self.config_file, 'r') as file:
+        with open(self.task_config_file, "r") as file:
             self.config = yaml.safe_load(file)
 
-        self.apply_config()
+        self.apply_task_config()
 
-    def apply_config(self):
+    def apply_task_config(self):
         """应用配置，添加新任务，删除不再需要的任务"""
         current_jobs = {job.id: job for job in self.scheduler.get_jobs()}
         new_job_ids = set()
 
-        for task_config in self.config['tasks']:
-            module_name, func_name = task_config['task'].rsplit('.', 1)
+        for task_config in self.config["tasks"]:
+            module_name, job_name = task_config["task"].rsplit(".", 1)
             module = importlib.import_module(module_name)
-            task = getattr(module, func_name)
-            job_id = f"{module_name}.{func_name}"
+            job = getattr(module, job_name)
+            job_id = f"{module_name}.{job_name}"
+
+            trigger = self._create_trigger(task_config)
+            executor = self._get_executor(task_config)
+            subscribes = self._get_subscribes(task_config)
 
             if job_id in current_jobs:
                 # 更新现有任务
-                self.scheduler.reschedule_job(
-                    job_id,
-                    trigger=IntervalTrigger(seconds=task_config['interval'])
-                )
+                self.scheduler.reschedule_job(job_id, trigger=trigger)
             else:
                 # 添加新任务
-                self.register(task, task_config['interval'])
+                self.register(job=job, trigger=trigger, executor=executor, subscribes=subscribes)
 
             new_job_ids.add(job_id)
 
@@ -97,46 +110,29 @@ class TimedTaskScheduler:
 
     def reload_config(self):
         """重新加载配置文件并应用更改"""
-        self.load_config()
+        self.load_task_config()
 
-    def register(self, task, interval):
+    def register(self, job, trigger, executor, subscribes):
         """注册一个新任务及其执行间隔"""
-        job_id = f"{task.__module__}.{task.__name__}"
+        job_name = f"{job.__module__}.{job.__name__}"
         job = self.scheduler.add_job(
-            self._execute_and_publish,
-            trigger=IntervalTrigger(seconds=interval),
-            args=[task],
-            id=job_id,
+            func=JobManager.execute_and_publish,
+            trigger=trigger,
+            executor=executor,
+            args=[job],
+            id=job_name,
+            jobstore="mariadb",
+            replace_existing=True,
             max_instances=1,
-            coalesce=True
+            coalesce=True,
         )
-        return job.id
+
+        JobManager.subscribe(job_name, subscribes)
+        return job_name
 
     def unregister(self, job_id):
         """取消注册一个任务"""
         self.scheduler.remove_job(job_id)
-
-    def _execute_and_publish(self, task):
-        """执行任务并发布结果"""
-        try:
-            result = task()
-            self.publish(task.__name__, result)
-        except Exception as e:
-            self.publish(task.__name__, str(e), is_error=True)
-
-    def publish(self, task_name, result, is_error=False):
-        """发布任务结果"""
-        for subscriber in self.subscribers[task_name]:
-            subscriber(task_name, result, is_error)
-
-    def subscribe(self, task_name, callback):
-        """订阅任务结果"""
-        self.subscribers[task_name].append(callback)
-
-    def unsubscribe(self, task_name, callback):
-        """取消订阅任务结果"""
-        if callback in self.subscribers[task_name]:
-            self.subscribers[task_name].remove(callback)
 
     def start(self):
         """启动定时任务框架"""
@@ -148,16 +144,88 @@ class TimedTaskScheduler:
         self.observer.stop()
         self.observer.join()
 
-    def _job_listener(self, event):
+    @staticmethod
+    def _create_trigger(task_config):
+        """根据配置创建相应的触发器"""
+        trigger_type = task_config["trigger_type"].lower()
+
+        if trigger_type == "interval":
+            return IntervalTrigger(seconds=task_config["interval"])
+        elif trigger_type == "cron":
+            cron_config = task_config["cron"]
+            cron_expression = cron_config["expression"]
+            cron_parts = cron_expression.split()
+
+            if len(cron_parts) == 5:
+                # Standard cron format：Min Hour Day Month Week
+                cron_kwargs = {
+                    "minute": cron_parts[0],
+                    "hour": cron_parts[1],
+                    "day": cron_parts[2],
+                    "month": cron_parts[3],
+                    "day_of_week": cron_parts[4],
+                }
+            elif len(cron_parts) == 6:
+                # Extend cron format：Sec Min Hour Day Month Week
+                cron_kwargs = {
+                    "second": cron_parts[0],
+                    "minute": cron_parts[1],
+                    "hour": cron_parts[2],
+                    "day": cron_parts[3],
+                    "month": cron_parts[4],
+                    "day_of_week": cron_parts[5],
+                }
+            else:
+                raise ValueError(
+                    "Invalid cron expression. Expected either 5 parts (standard cron) or 6 parts (extended cron)"
+                )
+
+            # 处理可选参数
+            for field in ["start_date", "end_date", "timezone", "jitter"]:
+                if field in cron_config:
+                    if field in ["start_date", "end_date"]:
+                        cron_kwargs[field] = datetime.fromisoformat(cron_config[field])
+                    elif field == "timezone":
+                        cron_kwargs[field] = timezone(cron_config[field])
+                    else:
+                        print(field)
+                        cron_kwargs[field] = cron_config[field]
+
+            return CronTrigger(**cron_kwargs)
+        elif trigger_type == "date":
+            return DateTrigger(run_date=datetime.fromisoformat(task_config["run_date"]))
+        else:
+            raise ValueError(f"Unsupported trigger type: {trigger_type}")
+
+    @staticmethod
+    def _get_executor(task_config):
+        """获取执行器"""
+        executor_name = task_config.get("executor", "default")
+        if executor_name == "ProcessPoolExecutor":
+            return "process_pool"
+        elif executor_name == "ThreadPoolExecutor":
+            return "thread_pool"
+        else:
+            return "default"
+
+    @staticmethod
+    def _get_subscribes(task_config):
+        """获取回调任务（如果存在）"""
+        subscribes = []
+
+        if "subscribers" in task_config:
+            for subscribe in task_config["subscribers"]:
+                module_name, callback_name = subscribe.rsplit(".", 1)
+                module = importlib.import_module(module_name)
+                subscribes.append(getattr(module, callback_name))
+
+        return subscribes
+
+    @staticmethod
+    def _job_listener(event):
         """监听任务执行事件"""
         if event.code == EVENT_JOB_MISSED:
-            logger.warning(f"Job {event.job_id} missed its execution time")
+            LOG.error(f"Job {event.job_id} missed its execution time")
 
         if event.code == EVENT_JOB_EXECUTED:
-            logger.critical(f"Job {event.job_id} was executed")
-
-    def result_handler(task_name, result, is_error):
-        if is_error:
-            logger.error(f"Error in {task_name}: {result}")
-        else:
-            logger.info(f"Result from {task_name}: {result}")
+            LOG.info(f"Job {event.job_id} was executed")
