@@ -53,5 +53,5 @@ LOG = logging.getLogger()
 class RotateK3SCertificateTask(AbstractTask):
     @classmethod
     def execute(cls, *args, **kwargs):
+        LOG.info(f"Start to check if it is necessary to rotate K3s certificate.")
         # rotate_certificate()
-        pass

@@ -24,7 +24,7 @@ class CleanCoreDumpTask(AbstractTask):
         Raises:
             OSError: If there are issues accessing or modifying files and directories.
         """
-        LOG.critical("Start to clean core dump file!")
+        LOG.info("Start to clean core dump file!")
 
         for core_file_name in get_filtered_core_files(CORE_DUMP_DIR):
             fs_stat = os.statvfs(CORE_DUMP_DIR)

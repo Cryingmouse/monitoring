@@ -4,6 +4,21 @@ tasks:
     task_store: default
     trigger_type: interval
     interval: 5
+  - task: tasks.rotate_k3s_certificate.RotateK3SCertificateTask
+    executor: ThreadPoolExecutor
+    task_store: default
+    trigger_type: cron
+    cron:
+      expression: "* * 2 * * *"
+      timezone: "Asia/Shanghai"
+  - task: tasks.sync_local_user_group.SyncLocalUserGroup
+    executor: ThreadPoolExecutor
+    task_store: default
+    trigger_type: cron
+    cron:
+      expression: "* */5 * * * *"
+      timezone: "Asia/Shanghai"
+    jitter: 2
   - task: tasks.task1.Task1
     executor: ProcessPoolExecutor
     task_store: default
