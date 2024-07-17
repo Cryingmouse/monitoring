@@ -76,35 +76,37 @@ class ParentThreadFilter(logging.Filter):
         return True
 
 
+def get_log_directory(handler_key, default_path):
+    """Determine log directory based on platform."""
+    platform = sys.platform
+    if platform in ["win32", "darwin"]:
+        return os.path.join(os.environ["TEMP"], "log")
+    return default_path
+
+
 def setup_logging():
     config_file = os.path.join(os.path.dirname(__file__), "resources", "logging.json")
 
-    if not config_file:
+    if not os.path.isfile(config_file):
         raise FileNotFoundError("Failed to find the logging.json.")
 
     with open(config_file) as f_in:
         config_json = json.load(f_in)
 
-    platform = sys.platform
+    # Define default paths
+    default_file_path = "/var/log/scheduler"
+    default_core_dump_path = "/var/log/systemd/coredump/"
 
-    if "file_handler" in config_json["handlers"]:
-        if platform in ["win32", "darwin"]:
-            log_dir = os.path.join(os.environ["TEMP"], "log")
-        else:
-            log_dir = config_json["handlers"]["file_handler"].get("filepath", "/var/log/scheduler")
-
-        config_json["handlers"]["file_handler"]["filename"] = os.path.join(
-            log_dir, config_json["handlers"]["file_handler"]["filename"]
-        )
-
-    if "clean_core_dump_file_handler" in config_json["handlers"]:
-        if platform in ["win32", "darwin"]:
-            log_dir = os.path.join(os.environ["TEMP"], "log")
-        else:
-            log_dir = config_json["handlers"]["file_handler"].get("filepath", "/var/log/systemd/coredump/")
-
-        config_json["handlers"]["clean_core_dump_file_handler"]["filename"] = os.path.join(
-            log_dir, config_json["handlers"]["clean_core_dump_file_handler"]["filename"]
-        )
+    # Update file handlers
+    for handler_key, default_path in {
+        "file_handler": default_file_path,
+        "clean_core_dump_file_handler": default_core_dump_path,
+    }.items():
+        if handler_key in config_json["handlers"]:
+            log_dir = get_log_directory(handler_key, config_json["handlers"][handler_key].get("filepath", default_path))
+            config_json["handlers"][handler_key]["filename"] = os.path.join(
+                log_dir, config_json["handlers"][handler_key]["filename"]
+            )
+            config_json["handlers"][handler_key].pop("filepath", None)
 
     config.dictConfig(config_json)

@@ -26,16 +26,16 @@ class CleanCoreDumpTask(AbstractTask):
         """
         LOG.info("Start to clean core dump file!")
 
-        for core_file_name in get_filtered_core_files(CORE_DUMP_DIR):
-            fs_stat = os.statvfs(CORE_DUMP_DIR)
-            if min(fs_stat.f_bfree, fs_stat.f_bavail) / fs_stat.f_blocks > CLEAR_THRESHOLD:
-                break
-
-            abs_core_file_name = os.path.join(CORE_DUMP_DIR, core_file_name)
-            core_file = os.stat(abs_core_file_name)
-            os.remove(abs_core_file_name)
-
-            LOG.info(f"{core_file_name} {core_file.st_size} bytes")
+        # for core_file_name in get_filtered_core_files(CORE_DUMP_DIR):
+        #     fs_stat = os.statvfs(CORE_DUMP_DIR)
+        #     if min(fs_stat.f_bfree, fs_stat.f_bavail) / fs_stat.f_blocks > CLEAR_THRESHOLD:
+        #         break
+        #
+        #     abs_core_file_name = os.path.join(CORE_DUMP_DIR, core_file_name)
+        #     core_file = os.stat(abs_core_file_name)
+        #     os.remove(abs_core_file_name)
+        #
+        #     LOG.info(f"{core_file_name} {core_file.st_size} bytes")
 
 
 def get_filtered_core_files(dir_path):

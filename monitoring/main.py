@@ -1,3 +1,5 @@
+import time
+
 import click
 
 from monitoring.logger import setup_logging
@@ -7,8 +9,7 @@ setup_logging()
 
 
 @click.command()
-@click.option(
-    "-c", "--config_file", "config_file", help="Path to the configuration file", required=True, type=str)
+@click.option("-c", "--config_file", "config_file", help="Path to the configuration file", required=True, type=str)
 def main(config_file):
     job_store_url = "mysql+pymysql://root:NAS_PASS@127.0.0.1:3306/nas"
 
@@ -17,7 +18,7 @@ def main(config_file):
 
     try:
         while True:
-            import time
+
             time.sleep(1)
     except KeyboardInterrupt:
         print("Stopping the scheduler...")
