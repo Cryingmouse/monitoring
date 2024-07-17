@@ -9,5 +9,5 @@ class AbstractTask:
 
 class AbstractSubscriber:
     @classmethod
-    def execute(cls, job_name: str, result: Any, is_error: bool):
+    def execute(cls, task_name: str, result: Any, is_error: bool):
         raise NotImplemented

@@ -22,7 +22,7 @@ class Task1(AbstractTask):
 
 class Subscriber1(AbstractSubscriber):
     @classmethod
-    def execute(cls, job_name: str, result: Any, is_error: bool = False):
+    def execute(cls, task_name: str, result: Any, is_error: bool = False):
         LOG.error(f"Executing Subscriber1, {result}, {datetime.now()}")
 
         return "Subscriber1 result"
@@ -30,7 +30,7 @@ class Subscriber1(AbstractSubscriber):
 
 class Subscriber2(AbstractSubscriber):
     @classmethod
-    def execute(cls, job_name: str, result: Any, is_error: bool = False):
+    def execute(cls, task_name: str, result: Any, is_error: bool = False):
         LOG.error(f"Executing Subscriber2, {result}, {datetime.now()}")
 
         return "Subscriber2 result"
