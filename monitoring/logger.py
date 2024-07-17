@@ -86,10 +86,19 @@ def setup_logging():
         config_json = json.load(f_in)
 
     platform = sys.platform
-    log_dir = os.path.join(os.environ["TEMP"], "log") if platform in ["win32", "darwin"] else "/var/log/lnquanta"
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir = os.path.join(os.environ["TEMP"], "log") if platform in ["win32", "darwin"] else "/var/log/scheduler"
 
-    if "file" in config_json["handlers"]:
-        config_json["handlers"]["file"]["filename"] = os.path.join(log_dir, config_json["handlers"]["file"]["filename"])
+    if "file_handler" in config_json["handlers"]:
+        config_json["handlers"]["file_handler"]["filename"] = os.path.join(
+            log_dir, config_json["handlers"]["file_handler"]["filename"]
+        )
+
+    log_dir = (
+        os.path.join(os.environ["TEMP"], "log") if platform in ["win32", "darwin"] else "/var/log/systemd/coredump/"
+    )
+    if "clean_core_dump_handler" in config_json["handlers"]:
+        config_json["handlers"]["clean_core_dump_handler"]["filename"] = os.path.join(
+            log_dir, config_json["handlers"]["clean_core_dump_handler"]["filename"]
+        )
 
     config.dictConfig(config_json)

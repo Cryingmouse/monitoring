@@ -45,18 +45,29 @@
     }
   },
   "handlers": {
-    "file": {
+    "file_handler": {
       "class": "logging.handlers.RotatingFileHandler",
       "level": "DEBUG",
       "formatter": "simple",
       "filters": [
         "parent_thread"
       ],
-      "filename": "monitoring.log",
+      "filename": "scheduler.log",
       "maxBytes": 1048576000,
       "backupCount": 5
     },
-    "console": {
+    "clean_core_dump_handler": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "DEBUG",
+      "formatter": "simple",
+      "filters": [
+        "parent_thread"
+      ],
+      "filename": "clean_core_dump.log",
+      "maxBytes": 1048576000,
+      "backupCount": 5
+    },
+    "console_handler": {
       "class": "logging.StreamHandler",
       "level": "DEBUG",
       "formatter": "colored",
@@ -69,7 +80,17 @@
   "root": {
     "level": "DEBUG",
     "handlers": [
-      "console"
+      "file_handler",
+      "console_handler"
     ]
+  },
+  "loggers": {
+    "core_dump": {
+      "level": "INFO",
+      "handlers": [
+        "console_handler",
+        "clean_core_dump_handler"
+      ]
+    }
   }
 }

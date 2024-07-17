@@ -1,7 +1,12 @@
 tasks:
+  - task: tasks.clean_core_dump.CleanCoreDumpTask
+    executor: ThreadPoolExecutor
+    task_store: default
+    trigger_type: interval
+    interval: 5
   - task: tasks.task1.Task1
     executor: ProcessPoolExecutor
-    task_store: mariadb
+    task_store: default
     trigger_type: interval
     interval: 2
     subscribers:
@@ -14,7 +19,6 @@ tasks:
     cron:
       expression: "*/5 * * * * *"
       timezone: "Asia/Shanghai"
-      jitter: 1
     subscribers:
       - tasks.task2.Subscriber1
       - tasks.task2.Subscriber2
