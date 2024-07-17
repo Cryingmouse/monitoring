@@ -9,7 +9,7 @@ LOG = logging.getLogger()
 
 class Task2(AbstractTask):
     @classmethod
-    def execute(cls):
+    def execute(cls, *args, **kwargs):
         LOG.critical(f"Executing Task2, {datetime.now()}")
 
         LOG.critical(f"Executing Task2, {datetime.now()} after sleep")

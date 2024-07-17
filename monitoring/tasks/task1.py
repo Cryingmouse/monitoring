@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from typing import Any
 
@@ -9,10 +10,10 @@ LOG = logging.getLogger()
 
 class Task1(AbstractTask):
     @classmethod
-    def execute(cls):
+    def execute(cls, *args, **kwargs):
         LOG.critical(f"Executing Job1, {datetime.now()}")
 
-        # time.sleep(10)  # 模拟长时间运行的任务
+        time.sleep(10)  # 模拟长时间运行的任务
 
         LOG.critical(f"Executing Job1, {datetime.now()} after sleep")
 

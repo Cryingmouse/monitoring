@@ -115,14 +115,14 @@ class Scheduler:
         """重新加载配置文件并应用更改"""
         self.load_task_config()
 
-    def register(self, task, trigger, executor, store, subscribes):
+    def register(self, task, trigger, executor, store, subscribes, *args, **kwargs):
         task_name = f"{task.__module__}.{task.__name__}"
 
         self.scheduler.add_job(
             func=self.task_manager.execute_and_publish,
             trigger=trigger,
             executor=executor,
-            args=[task],
+            args=[task, args, kwargs],
             id=task_name,
             jobstore=store,
             replace_existing=True,

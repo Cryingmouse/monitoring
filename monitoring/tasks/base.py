@@ -3,7 +3,7 @@ from typing import Any
 
 class AbstractTask:
     @classmethod
-    def execute(cls):
+    def execute(cls, *args, **kwargs):
         raise NotImplemented
 
 

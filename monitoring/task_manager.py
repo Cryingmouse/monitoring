@@ -10,10 +10,10 @@ class TaskManager:
     def __init__(self):
         self.subscribers = defaultdict(list)
 
-    def execute_and_publish(self, task: AbstractTask):
+    def execute_and_publish(self, task: AbstractTask, *args, **kwargs):
         task_name = f"{task.__module__}.{task.__name__}"
         try:
-            result = task.execute()
+            result = task.execute(args, kwargs)
             self.publish(task_name, result)
         except Exception as e:
             LOG.error(f"An exception {e} during the task {task}")
