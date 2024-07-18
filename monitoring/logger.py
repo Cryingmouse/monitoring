@@ -76,7 +76,7 @@ class ParentThreadFilter(logging.Filter):
         return True
 
 
-def get_log_directory(handler_key, default_path):
+def get_log_directory(default_path):
     """Determine log directory based on platform."""
     platform = sys.platform
     if platform in ["win32", "darwin"]:
@@ -86,24 +86,16 @@ def get_log_directory(handler_key, default_path):
 
 def setup_logging():
     config_file = os.path.join(os.path.dirname(__file__), "resources", "logging.json")
-
     if not os.path.isfile(config_file):
         raise FileNotFoundError("Failed to find the logging.json.")
 
     with open(config_file) as f_in:
         config_json = json.load(f_in)
 
-    # Define default paths
-    default_file_path = "/var/log/scheduler"
-    default_core_dump_path = "/var/log/systemd/coredump/"
-
     # Update file handlers
-    for handler_key, default_path in {
-        "file_handler": default_file_path,
-        "clean_core_dump_file_handler": default_core_dump_path,
-    }.items():
+    for handler_key in ("file_handler", "clean_core_dump_file_handler"):
         if handler_key in config_json["handlers"]:
-            log_dir = get_log_directory(handler_key, config_json["handlers"][handler_key].get("filepath", default_path))
+            log_dir = get_log_directory(config_json["handlers"][handler_key].get("filepath"))
             config_json["handlers"][handler_key]["filename"] = os.path.join(
                 log_dir, config_json["handlers"][handler_key]["filename"]
             )
